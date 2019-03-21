@@ -13,7 +13,8 @@
     "build": "webpack --config webpack.prod.js",
     "dist": "npm i && npm run build",
     "start": "webpack-dev-server --config webpack.dev.js",
-    "analyze": "webpack --config webpack.analyze.js"
+    "analyze": "webpack --config webpack.analyze.js",
+    "test": "concurrently --kill-others \"http-server ./ -p 8888 > /dev/null 2>&1\" \"jest ./tests\""
   },
   "devDependencies": {
     "@babel/core": "7.2.2",
@@ -52,7 +53,10 @@
     "webpack-cli": "3.2.1",
     "webpack-dev-server": "3.1.14",
     "webpack-merge": "4.2.1",
-    "webpack-bundle-analyzer": "3.1.0"
+    "webpack-bundle-analyzer": "3.1.0",
+    "jest": "24.5.0",
+    "puppeteer": "1.13.0",
+    "concurrently": "^4.1.0"
   },
   "dependencies": {
     "bootstrap": "4.3.1",
