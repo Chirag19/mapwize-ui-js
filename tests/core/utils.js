@@ -14,7 +14,7 @@ function mwzTest(name, evaluateFn) {
         })
         .then(page => {
           page.exposeFunction('callbackTest', error => {
-            page.browser().close()
+            // page.browser().close()
             if (error) {
               return reject(error)
             }
