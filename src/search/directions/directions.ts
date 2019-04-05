@@ -9,27 +9,31 @@ import { getTranslation, latitude, longitude, replaceColorInBase64svg } from '..
 
 
 export class SearchDirections extends DefaultControl {
-    
+
     private _currentVenue: any
     private _hideResultsTimeout: any
-    
+
     private _from: any
     private _to: any
+    private _wayPoint: any[]
     private _accessible: boolean
+    private _close: boolean
     private _direction: any
-    
-    
-    constructor (mapInstance: any, options: any) {
+
+    constructor(mapInstance: any, options: any) {
         super(mapInstance)
 
         this._container = $(directionsHtml)
         this._currentVenue = this.map.getVenue()
         this._from = this._to = null
         this._accessible = false
+        this._close = false
 
         this.mainColor(options)
+        this._wayPoint = []
 
-        if(options.hideMenu){
+        this._container.find('label:last').hide()
+        if (options.hideMenu) {
             this._container.find('#mwz-menuButton').addClass('d-none')
         }
 
@@ -37,10 +41,10 @@ export class SearchDirections extends DefaultControl {
             const lang = this.map.getLanguageForVenue(this._currentVenue)
             this._container.find('.mwz-venue-name').text(getTranslation(this._currentVenue, lang, 'title'))
         }
-        
+
         this.listen('click', '#mwz-close-button', () => {
             this.clear()
-            
+            $("#alert").hide()
             this.map.searchBar.show()
         })
         this.listen('click', '#mwz-reverse-button', () => {
@@ -54,12 +58,16 @@ export class SearchDirections extends DefaultControl {
             }
             this._setFrom(null); // theses two lines avoid double direction calculation
             this._setTo(null);
-            
+
             this._setFrom(oldTo);
             this._setTo(oldFrom);
 
             this._container.find('#mwz-mapwizeSearchFrom').val(this.getDisplay(this._from))
             this._container.find('#mwz-mapwizeSearchTo').val(this.getDisplay(this._to))
+            this._container.find('.mwz-mapwizeSearchWayPoint:last').val(this.getDisplay(this._wayPoint))
+
+
+
         })
         this.listen('click', '#mwz-accessible-button', () => {
             this._accessible = !this._accessible;
@@ -71,15 +79,15 @@ export class SearchDirections extends DefaultControl {
                 this._container.find('#accessible-off').addClass('d-inline')
                 this._container.find('#accessible-on').removeClass('d-inline')
             }
-        
+
             this._displayDirection()
         })
-        
+
         this.listen('focus', '#mwz-mapwizeSearchFrom', () => {
             this.map.searchResults.setFocusOn('from')
-            
+
             clearTimeout(this._hideResultsTimeout)
-            
+
             const str = this._container.find('#mwz-mapwizeSearchFrom').val() + ''
             if (str) {
                 this.map.searchResults.search(str, () => {
@@ -91,9 +99,9 @@ export class SearchDirections extends DefaultControl {
                 this.map.searchResults.showMainFromIfAny(this._setFrom.bind(this))
             }
         })
+
         this.listen('keyup', '#mwz-mapwizeSearchFrom', () => {
             this._setFrom(null)
-            
             const str = this._container.find('#mwz-mapwizeSearchFrom').val() + ''
             if (str) {
                 this.map.searchResults.search(str, () => {
@@ -113,12 +121,12 @@ export class SearchDirections extends DefaultControl {
                 this.map.searchResults.hide()
             }, 500)
         })
-        
+
         this.listen('focus', '#mwz-mapwizeSearchTo', () => {
             this.map.searchResults.setFocusOn('to')
-            
+
             clearTimeout(this._hideResultsTimeout)
-            
+
             const str = this._container.find('#mwz-mapwizeSearchTo').val() + ''
             if (str) {
                 this.map.searchResults.search(str, () => {
@@ -130,9 +138,10 @@ export class SearchDirections extends DefaultControl {
                 this.map.searchResults.showMainSearchIfAny(this._setTo.bind(this))
             }
         })
+
         this.listen('keyup', '#mwz-mapwizeSearchTo', () => {
             this._setTo(null)
-            
+
             const str = this._container.find('#mwz-mapwizeSearchTo').val() + ''
             if (str) {
                 this.map.searchResults.search(str, () => {
@@ -146,22 +155,118 @@ export class SearchDirections extends DefaultControl {
                 this.map.searchResults.hide()
             }
         })
-        this.listen('blur', '#mwz-mapwizeSearchTo', () => {
+
+        this.listen('focus', '.mwz-mapwizeSearchWayPoint:last', () => {
+            this.map.searchResults.setFocusOn('waypoint')
+
+            clearTimeout(this._hideResultsTimeout)
+
+            const str = this._container.find('.mwz-mapwizeSearchWayPoint:last').val() + ''
+            if (str) {
+                this.map.searchResults.search(str, () => {
+                    return this._setWayPoint.bind(this)
+                }).then(() => {
+                    this.map.searchResults.show()
+                })
+            } else {
+                this.map.searchResults.showMainSearchIfAny(this._setWayPoint.bind(this))
+            }
+
+            if (this._close) {
+                this._container.find('#close-off').removeClass('d-inline')
+                this._container.find('#close-on').addClass('d-inline')
+            } else {
+                this._container.find('#close-off').addClass('d-inline')
+                this._container.find('#close-on').removeClass('d-inline')
+            }
+        })
+
+        this.listen('keyup', '.mwz-mapwizeSearchWayPoint:last', () => {
+            this._setWayPoint(null)
+
+            const str = this._container.find('.mwz-mapwizeSearchWayPoint:last').val() + ''
+            if (str) {
+                this.map.searchResults.search(str, () => {
+                    return this._setWayPoint.bind(this)
+                }).then(() => {
+                    this.map.searchResults.show()
+                })
+            } else if (this._currentVenue) {
+                this.map.searchResults.showMainSearchIfAny(this._setWayPoint.bind(this))
+            } else {
+                this.map.searchResults.hide()
+            }
+        })
+
+        this.listen('blur', '.mwz-mapwizeSearchTo', () => {
             this._hideResultsTimeout = setTimeout(() => {
                 this._container.find('#mwz-mapwizeSearchTo').val(this.getDisplay(this._to))
                 this.map.searchResults.hide()
             }, 500)
         })
 
+        this.listen('blur', '.mwz-mapwizeSearchWayPoint:last', () => {
+            this._hideResultsTimeout = setTimeout(() => {
+                this._container.find('.mwz-mapwizeSearchWayPoint:last').val(this.getDisplay(this._wayPoint[this._wayPoint.length - 1]))
+                this.map.searchResults.hide()
+            }, 500)
+
+        })
+
+        this.listen('click', '#wp', () => {
+            if(this._container.find('.mwz-mapwizeSearchWayPoint').length <6){
+                this.addDestination()
+            }
+        })
+
+        this.listen('click', '#alertClose', () => {
+            $("#alert").hide()
+        })
+
         this.onVenueWillEnter = this.onVenueWillEnter.bind(this)
         this.onVenueEnter = this.onVenueEnter.bind(this)
         this.onVenueExit = this.onVenueExit.bind(this)
         this.onClick = this.onClick.bind(this)
-        
+
         this.map.on('mapwize:venuewillenter', this.onVenueWillEnter)
         this.map.on('mapwize:venueenter', this.onVenueEnter)
         this.map.on('mapwize:venueexit', this.onVenueExit)
         this.map.on('mapwize:click', this.onClick)
+    }
+
+    public addDestination() {
+
+        const label = $(
+            '<label id="wayPointId-' + this._wayPoint.length + '" class="mwz-searchLine d-flex align-items-center">' +
+            '<div class="mwz-icon text-secondary">' +
+            '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAQAAABIkb+zAAADJklEQVR4AezZA6wkSxQG4P/ZtrWYpG9mus4fP4bPXm+0tm1Ga8b2xlpGa9u2zet7e+2dqZ65XdU1SX8nTio5fw1KiFYikUgkEvxGWnKqrJAKBrdLyrlSpkhLqQe31XtBteZOBtlLtqk23vNwkfcq+/AkgxB1nH3Sr8Al6VfUAJ5jkEeduTHiZbgh48lBBvmXHMx4iJ/8yVIGBVap/Il4STupYVB43RjdCfFRbRjUvVQbxMP/Wz/74T4F/2/YxxRLGURUpUxZX7K4i0GEtaveC7BJjWIQbclI2FPymZRHHqC85DPYIpMYRF8yyd6up9REAF5u+BpskC4MzJR0gQ2yKVQ7h2W8+tF/80b9JON5ONSYzTDP+1DfiFyR//AUHvSU/CdX9CNT78A0aaL/P1EZPIHv6/+7pAlM40Tt3qYjspAODvwTyTxNE4fwNLJ5WndykHkwjfs0LQxGDjJYE38/TNMeHQU5ZJRm9DmYJrW5W6j3OnKo97puaw3TWGoyAEthmm5Jyijk4Pu65Q+mcYOmhUHIgYM0ozfANJmj/Rt9Ftk8y0O5R8tcmCZjC1/IVEfdWBlr4R5Iv5Wg4Ako+q2EhXui9PthNnP859HNHP8Js5njuzBPNobbTnOC+oHv8t3w22nZCBtkpL4Vpw/2vm8qgO/DDjloZP4PwhYZbCTAYNiSeodVkQeo8t6GPTIr8vmfBZvUD1EHUD/CLi6NdP6XwTb5JdIAv8A+WRNZgHWIg/o1sgXsN8SD8yMJsABxkXqsrnP71VIPGk6/FMhkxKnhazxRpwAnvFcRL9WoTstXI2jFfMzX3IS6gJ+ztMDX4c/hBulZ0Pz3hDOe4rq8A2zAU3CHpFmZV/uVKgO3qKH5BFBD4ZynZW3Y9mUtnoZ7+A3LQgUo4zdwE1uECtAC7pKZuvZlJlzG57gqZ4BVfA5uK/lMzmed/QvpT+E+/q45eblPJj9x/qegaDwjix4LsATPoHh4bz/yGnbIexvFhan7P2Y5zxSKD79j2Z2V9zsUJ/7Oqhv1O4oX+7IvXJBIJBjYLbcCJAGSAEmAJEASIJG4vmEJRsEoGAUAvFKa18Rc8u4AAAAASUVORK5CYII=" alt="To" />' +
+            '</div>' +
+            '<div class="mwz-search flex-grow-1">' +
+            '<input type="text" class="form-control mwz-mapwizeSearchWayPoint" placeholder="To" autocomplete="off" />' +
+            '</div>' +
+            '<div class="mwz-button-icon">' +
+            '<button type="button" class="btnCloseWayPoint btn-link">' +
+            '<img class="d-none d-inline" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAQAAABIkb+zAAABZUlEQVR4Ae2agWYDQRRFBxCxHxEAFsY8CwsW+r9pAdWgAvmdCttVmJJiIEzFO55wz/zAOWRj5s0kIYQQQgghhBBC/I9xsPc8JYA8lY9xSCy2t4vVcs0ToH+1ahfbs/pnq1Z9E5r+bZ2xhMPuT78lAPq3hMMO0S8nq1a9E5p+W+UEJNjRalstwVW/rWPyJi9l80/I8z39suUlNfCE+XF9W7v6fIKtecb1+QRcn0/A9fkEXJ9PwPXjE/JyT99WQB8Q6Yc7AH6IqD6fgOrzCag+n4Dq8wmYPp/gsAmMTsgvDtvwyAT7idR3OJzw+sxsgdfnE3h9PoHS5xMA/fgA+6IC9BMCPmL9jQL6fAKgXzb7jkxwmHF2ZqraTutAwx8pdaiPH6tosBU/WtRwN368rguO2CsmXfLFX7Pqott3xhmQUN589TsJr8/03GbuP7fRg6foJ2d69NcYh/IZ/+xSCCGEEEIIIYQQvw2UKo1mqKrvAAAAAElFTkSuQmCC" alt="Toggle accessible" />' +
+            '</button>' +
+            '</div>' +
+            '</label>')
+
+        this._container.find('#wp').before(label)
+
+        label.find('.btnCloseWayPoint').on('click', () => {
+            console.log(label)
+            this.removeWayPoint(label[0].id)
+            label.remove()
+        })
+
+        this._container.find('.mwz-mapwizeSearchWayPoint:last').focus();
+    }
+
+    public removeWayPoint(id: any) {
+        var position = id.split('-')[1];
+
+        delete this._wayPoint[position];
+        this._displayDirection()
     }
 
     public mainColor(options: any) {
@@ -179,35 +284,35 @@ export class SearchDirections extends DefaultControl {
         this.map.off('mapwize:venueexit', this.onVenueExit)
         this.map.off('mapwize:click', this.onClick)
     }
-    
-    public show () {
+
+    public show() {
         this.map.searchBar.hide()
-        
+
         if (this.map.footerSelection.getSelected()) {
             this._setTo(this.map.footerSelection.getSelected())
             const lang = this.map.getLanguage()
             this._container.find('#mwz-mapwizeSearchTo').val(getTranslation(this._to, lang, 'title'))
         }
-        
+
         this.map.footerSelection.unselect()
         this.map.footerVenue.hide()
-        
+
         this.map.addControl(this, 'top-left')
         $(this.map._container).addClass('mwz-directions')
     }
-    public hide () {
+    public hide() {
         this.map.footerDirections.hide()
         this.map.footerVenue.showIfNeeded()
-        
+
         this.map.removeControl(this)
         $(this.map._container).removeClass('mwz-directions')
     }
-    
+
     private onVenueWillEnter(e: any): void {
         this._currentVenue = e.venue
-            
-            const lang = this.map.getLanguageForVenue(e.venue)
-            this._container.find('.mwz-venue-name').text(getTranslation(e.venue, lang, 'title'))
+
+        const lang = this.map.getLanguageForVenue(e.venue)
+        this._container.find('.mwz-venue-name').text(getTranslation(e.venue, lang, 'title'))
     }
     private onVenueEnter(e: any): void {
         if (this._direction) {
@@ -223,35 +328,62 @@ export class SearchDirections extends DefaultControl {
         if (!this._direction) {
             this.clear()
         }
-        
         this._currentVenue = null;
     }
     private onClick(e: any): void {
         if (e.place && $(this.map._container).hasClass('mwz-directions')) {
+
             if (!this.extractQuery(this._from)) {
                 this._setFrom(set(e.place, 'objectClass', 'place'));
                 this._container.find('#mwz-mapwizeSearchFrom').val(this.getDisplay(this._from))
             } else if (!this.extractQuery(this._to)) {
                 this._setTo(set(e.place, 'objectClass', 'place'));
                 this._container.find('#mwz-mapwizeSearchTo').val(this.getDisplay(this._to))
+
+            } else if(this._container.find('.mwz-mapwizeSearchWayPoint').length > this._wayPoint.filter(word => word != undefined).length){
+                this._setWayPoint(set(e.place, 'objectClass', 'place'));
+                this._container.find('.mwz-mapwizeSearchWayPoint:last').val(this.getDisplay(this._wayPoint[this._wayPoint.length - 1]))
             }
         }
     }
     private clear(): void {
         this._setFrom(null)
         this._setTo(null)
+
         this._direction = null
         this._container.find('#mwz-mapwizeSearchFrom').val('')
         this._container.find('#mwz-mapwizeSearchTo').val('')
+        this._container.find('.mwz-mapwizeSearchWayPoint:last').val('')
+        this._container.find('label:last').removeClass('d-flex')
+        this._container.find('label:last').hide()
+
+        var cmpt = 0;
+        var nbWayPoint = this._wayPoint.length;
+
+        this._container.find('label').each(function (index) {
+            if (cmpt >= 2 && cmpt < nbWayPoint + 2) {
+                $(this).remove()
+            }
+            cmpt++;
+        });
+
+        this._wayPoint = []
     }
     private _setFrom(from: any): void {
         this._from = from
-        
+
         this._displayDirection()
     }
     private _setTo(to: any): void {
         this._to = to
-        
+
+        this._displayDirection()
+    }
+
+    private _setWayPoint(waypoint: any): void {
+
+        this._wayPoint.push(waypoint)
+
         this._displayDirection()
     }
 
@@ -259,27 +391,57 @@ export class SearchDirections extends DefaultControl {
         if (o) {
             const lang = this.map.getLanguage()
             return getTranslation(o, lang, 'title')
-            
         }
         return '';
     }
-    
+
     private _displayDirection(options?: any) {
         this.map.removeMarkers();
-        
+
         const from = this.extractQuery(this._from)
         const to = this.extractQuery(this._to)
-        
+        //const wayPoint = this.extractQuery(this._wayPoint)
+
+        var wayPoints: any[]
+        wayPoints = [];
+
+        this._wayPoint.forEach(element => {
+            wayPoints.push(this.extractQuery(element));
+        });
+
+        wayPoints.push(to);
+
         if (from && to) {
-            Api.getDirection({
+            this._container.find('label:last').addClass("d-flex")
+            this._container.find('label:last').show()
+        }
+
+        var obj: any
+
+        obj =
+            {
                 from: from,
                 to: to,
                 options: {
                     isAccessible: this._accessible
                 }
-            }).then((direction: any) => {
+            }
+
+        if (wayPoints.length != 0) {
+            obj =
+                {
+                    from: from,
+                    waypoints: wayPoints,
+                    options: {
+                        isAccessible: this._accessible
+                    }
+                }
+        }
+
+        if (from && to) {
+            Api.getDirection(obj).then((direction: any) => {
                 this._direction = direction
-                
+
                 this.map.setDirection(direction, options);
                 const placesToPromote = [];
                 if (direction.from.placeId) {
@@ -290,16 +452,24 @@ export class SearchDirections extends DefaultControl {
                 }
                 this.map.addPromotedPlaces(placesToPromote);
                 this.map.addMarker(direction.to);
-                
+
                 this.map.footerDirections.displayStats(direction)
-            })
+            }).catch(function () {
+
+                $("#alert").show()
+                setTimeout(function () {
+                    $("#alert").hide()
+                }, 5000)
+
+            });
+
         } else {
             this.map.removeDirection()
             this._direction = null
             this.map.footerDirections.hide()
         }
     }
-    
+
     private extractQuery(o: any): any {
         if (isObject(o)) {
             if (o.location) {
@@ -310,9 +480,9 @@ export class SearchDirections extends DefaultControl {
                     venueId: o.venueId || this._currentVenue._id
                 };
             } else if (o.objectClass === 'place') {
-                return {placeId: o._id};
+                return { placeId: o._id };
             } else if (o.objectClass === 'placeList') {
-                return {placeListId: o._id};
+                return { placeListId: o._id };
             } else if (o.objectClass === 'userPosition') {
                 const userPosition = this.map.getUserPosition();
                 return {
